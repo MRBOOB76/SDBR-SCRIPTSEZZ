@@ -8,6 +8,8 @@ local Player = game.Players.LocalPlayer
 local HttpService = game:GetService("HttpService")
 local UserInputService = game:GetService("UserInputService")
 local VirtualInputManager = game:GetService("VirtualInputManager")
+local TweenService = game:GetService("TweenService")
+local TeleportService = game:GetService("TeleportService")
 
 local configFileName = "1mort_spider_config.json"
 
@@ -17,9 +19,9 @@ _G.speedValue = 50
 _G.flyEnabled = false
 _G.flyVelocity = nil
 _G.flyConnection = nil
-_G.smartFarmActive = false 
+_G.smartFarmActive = true -- СРАЗУ ВКЛЮЧЕНО НА ИСТИНУ ПРИ ЗАГРУЗКЕ!
 _G.justDied = false
-_G.forceRestartFarm = false -- Флаг экстренного перезапуска цикла без смерти
+_G.forceRestartFarm = false 
 
 -- 🔧 ОБНОВЛЕННАЯ ФУНКЦИЯ: ПОДСЧЕТ ПРЕДМЕТОВ С ИГНОРИРОВАНИЕМ ПАЛКИ
 function _G.checkItemsCount()
@@ -62,7 +64,7 @@ MainFrame.Position = UDim2.new(0.5, -275, 0.5, -175)
 MainFrame.BackgroundColor3 = Color3.fromRGB(15, 10, 30) 
 MainFrame.BorderSizePixel = 0
 MainFrame.Active = true
-MainFrame.Draggable = true -- Можно перетаскивать мышкой
+MainFrame.Draggable = true 
 MainFrame.Parent = ScreenGui
 
 Instance.new("UICorner", MainFrame).CornerRadius = UDim.new(0, 10)
@@ -76,7 +78,7 @@ UIStroke.Parent = MainFrame
 local Title = Instance.new("TextLabel")
 Title.Size = UDim2.new(1, -40, 0, 40)
 Title.BackgroundTransparency = 1
-Title.Text = " 🌌 1MORT SPIDER v3.0 // 30s RESTART EDITION"
+Title.Text = " 🌌 1MORT SPIDER v3.0 // HARD-AUTOEXEC EDITION"
 Title.TextColor3 = Color3.fromRGB(0, 255, 255) 
 Title.TextSize = 16
 Title.Font = Enum.Font.GothamBold
@@ -151,7 +153,7 @@ _G.LogPage.Parent = Container
 local LogText = Instance.new("TextLabel")
 LogText.Size = UDim2.new(1, 0, 1, 0)
 LogText.BackgroundTransparency = 1
-LogText.Text = "[SYSTEM]: 1mort Spider v3.0 успешно запущен.\n"
+LogText.Text = "[SYSTEM]: Робот запущен в режиме автовыполнения!\n"
 LogText.TextColor3 = Color3.fromRGB(0, 255, 150) 
 LogText.TextSize = 13
 LogText.Font = Enum.Font.Code
@@ -199,237 +201,190 @@ end
 _G.applyGrid(_G.MainPage)
 _G.applyGrid(_G.FarmPage)
 _G.applyGrid(_G.ConfigPage)
-
-_G.logMessage("Интерфейс v3.0 с фильтром рюкзака успешно запущен.")
 -- =============================================================================
--- 🌌 1MORT SPIDER v3.0 // ЧАСТЬ 2.1: СИСТЕМА УМНОГО ПЕРЕЗАПУСКА ЦИКЛА (~150 СТРОК)
+-- 🌌 1MORT SPIDER v3.0 // ЧАСТЬ 2.1: ЗАЩИТНЫЕ ЧЕКЕРЫ И ТАЙМЕРЫ (~150 СТРОК)
 -- =============================================================================
 
-local TweenService = game:GetService("TweenService")
-
--- МЕХАНИКА: Зажимаем и ДЕРЖИМ клавишу E ровно 0.6 секунд
+-- МЕХАНИКА ЗАЖАТИЯ КЛАВИШИ E НА 0.6 СЕКУНД
 local function holdEKey()
     VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.E, false, game)
     task.wait(0.6)
     VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.E, false, game)
 end
 
--- ФУНКЦИЯ ПЛАВНОГО ПЕРЕЛЁТА (TWEEN) СО СКОРОСТЬЮ 270
+-- ФУНКЦИЯ ПЛАВНОГО ПЕРЕЛЁТА (TWEEN) СО СКОРОСТЬЮ 270 ПОСЛЕ СМЕРТИ
 local function tweenToPosition(targetPosition)
     local char = Player.Character
     local root = char and char:FindFirstChild("HumanoidRootPart")
     if not root then return end
-    
     local distance = (root.Position - targetPosition).Magnitude
-    local duration = distance / 270 -- Скорость 270 студов в секунду
-    
-    _G.logMessage("[🛡️ TWEEN]: Аварийный перелёт на " .. math.floor(distance) .. " студов...")
-    
+    local duration = distance / 270
+    _G.logMessage("[🛡️ TWEEN]: Перелёт после смерти на " .. math.floor(distance) .. " студов...")
     local tweenInfo = TweenInfo.new(duration, Enum.EasingStyle.Linear, Enum.EasingDirection.Out)
     local tween = TweenService:Create(root, tweenInfo, {CFrame = CFrame.new(targetPosition)})
-    
     tween:Play()
     tween.Completed:Wait()
-    _G.logMessage("[🛡️ TWEEN]: Возврат на Точку 1 выполнен.")
 end
 
--- СОЗДАНИЕ КНОПКИ АВТОФАРМА В МЕНЮ
-local SmartFarmBtn = Instance.new("TextButton")
-SmartFarmBtn.Text = "Умный Автофарм: ВЫКЛ"
-SmartFarmBtn.BackgroundColor3 = Color3.fromRGB(40, 20, 60)
-SmartFarmBtn.TextColor3 = Color3.fromRGB(0, 255, 255)
-SmartFarmBtn.Font = Enum.Font.GothamBold
-SmartFarmBtn.Parent = _G.FarmPage
-Instance.new("UICorner", SmartFarmBtn).CornerRadius = UDim.new(0, 6)
+-- СОЗДАНИЕ ГЛОБАЛЬНОЙ КНОПКИ В МЕНЮ (ДЛЯ ВИЗУАЛА)
+_G.SmartFarmBtn = Instance.new("TextButton")
+_G.SmartFarmBtn.Text = "Умный Автофарм: АКТИВЕН"
+_G.SmartFarmBtn.BackgroundColor3 = Color3.fromRGB(0, 150, 100)
+_G.SmartFarmBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+_G.SmartFarmBtn.Font = Enum.Font.GothamBold
+_G.SmartFarmBtn.Parent = _G.FarmPage
+Instance.new("UICorner", _G.SmartFarmBtn).CornerRadius = UDim.new(0, 6)
 
 _G.justDied = false
-_G.forceRestartFarm = false -- Флаг для экстренного перезапуска тела цикла
+_G.forceRestartFarm = false 
 local lastItemsCount = 0
 
-Player.CharacterAdded:Connect(function(newCharacter)
-    if _G.smartFarmActive then _G.justDied = true end
-end)
+Player.CharacterAdded:Connect(function() if _G.smartFarmActive then _G.justDied = true end end)
 
--- 🚨 ПОТОК 1: ПРОВЕРКА НА ТЮРЬМУ (0 ПРЕДМЕТОВ) КАЖДЫЕ 5 СЕКУНД
+-- 🚨 ПОТОК АНТИ-ТЮРЬМЫ: ПРОВЕРКА НА 0 ПРЕДМЕТОВ КАЖДЫЕ 5 СЕКУНД
 task.spawn(function()
     while true do
         task.wait(5)
-        if _G.smartFarmActive then
-            if _G.checkItemsCount() == 0 then
-                _G.logMessage("[🚨 АНТИ-ТЮРЬМА]: Обнаружено 0 предметов! Восстановление...")
-                local root = Player.Character and Player.Character:FindFirstChild("HumanoidRootPart")
-                if root then
-                    root.CFrame = CFrame.new(6820.5, 20.1, 16.7)
-                    while _G.smartFarmActive and _G.checkItemsCount() < 2 do holdEKey() task.wait(0.1) end
-                    _G.logMessage("[🚨 АНТИ-ТЮРЬМА]: Стартовые вещи созданы.")
-                end
+        if _G.smartFarmActive and _G.checkItemsCount() == 0 then
+            _G.logMessage("[🚨 АНТИ-ТЮРЬМА]: Обнаружено 0 предметов! Восстановление...")
+            local root = Player.Character and Player.Character:FindFirstChild("HumanoidRootPart")
+            if root then
+                root.CFrame = CFrame.new(6820.5, 20.1, 16.7)
+                while _G.smartFarmActive and _G.checkItemsCount() < 2 do holdEKey() task.wait(0.1) end
             end
         end
     end
 end)
 
--- 🕒 ПОТОК 2: УМНЫЙ ТАЙМЕР НА 30 СЕКУНД ПРОСТОЯ (ПЕРЕЗАПУСК БЕЗ СМЕРТИ)
+-- 🕒 ПОТОК АНТИ-ЗАСТРЕВАНИЯ: УМНЫЙ ТАЙМЕР НА 30 СЕКУНД ПРОСТОЯ
 task.spawn(function()
-    local lastPosition = nil
-    local idleTimer = 0
-    
+    local lastPosition = nil local idleTimer = 0 local shopPos = Vector3.new(6820.5, 20.1, 16.7)
     while true do
-        task.wait(1) -- Проверяем состояние бота каждую секунду
+        task.wait(1)
         if _G.smartFarmActive then
             local root = Player.Character and Player.Character:FindFirstChild("HumanoidRootPart")
             local hum = Player.Character and Player.Character:FindFirstChildOfClass("Humanoid")
-            
             if root and hum and hum.Health > 0 then
                 local currentItems = _G.checkItemsCount()
-                
-                if not lastPosition then
-                    lastPosition = root.Position
-                    lastItemsCount = currentItems
-                    idleTimer = 0
+                if (root.Position - shopPos).Magnitude <= 3 then
+                    idleTimer = 0 lastPosition = root.Position lastItemsCount = currentItems
                 else
-                    local movedDistance = (root.Position - lastPosition).Magnitude
-                    
-                    -- Если персонаж не сдвинулся И количество вещей в рюкзаке не изменилось
-                    if movedDistance < 1 and currentItems == lastItemsCount then
-                        idleTimer = idleTimer + 1 -- Бот реально стоит без дела
-                        
-                        if idleTimer >= 30 then
-                            _G.logMessage("[⚠️ АФК-РЕСTАРТ]: Обнаружен застой на 30 секунд! Возвращаемся на Точку 1...")
-                            
-                            -- Активируем флаг сброса для главного цикла фарм-потока
-                            _G.forceRestartFarm = true 
-                            
-                            -- Плавно везем персонажа обратно в магазин на закупку
-                            tweenToPosition(Vector3.new(6820.5, 20.1, 16.7))
-                            
-                            idleTimer = 0
-                            lastPosition = nil
-                        end
+                    if not lastPosition then lastPosition = root.Position lastItemsCount = currentItems idleTimer = 0
                     else
-                        -- Бот работает (летит или закупается/сдает вещи) — сбрасываем таймер простоя
-                        lastPosition = root.Position
-                        lastItemsCount = currentItems
-                        idleTimer = 0
+                        if (root.Position - lastPosition).Magnitude < 1 and currentItems == lastItemsCount then
+                            idleTimer = idleTimer + 1
+                            if idleTimer >= 30 then
+                                _G.logMessage("[⚠️ АФК-РЕСTАРТ]: Застой 30 сек! Сброс и возврат на Точку 1...")
+                                _G.forceRestartFarm = true tweenToPosition(shopPos) idleTimer = 0 lastPosition = nil
+                            end
+                        else
+                            lastPosition = root.Position lastItemsCount = currentItems idleTimer = 0
+                        end
                     end
                 end
-            else
-                lastPosition = nil idleTimer = 0
-            end
-        else
-            lastPosition = nil idleTimer = 0
-        end
+            else lastPosition = nil idleTimer = 0 end
+        else lastPosition = nil idleTimer = 0 end
     end
 end)
--- =============================================================================
--- 🌌 1MORT SPIDER v3.0 // ЧАСТЬ 2.2: ТЕЛО УМНОГО ЦИКЛА АВТОФАРМА (~140 СТРОК)
+
+-- 🔄 ПОТОК ЕЖЕЧАСНОГО REJOIN (ПЕРЕЗАХОД НА СЕРВЕР КАЖДЫЙ ЧАС)
+task.spawn(function()
+    task.wait(3600)
+    if _G.smartFarmActive then
+        _G.logMessage("[🔄 REJOIN]: Прошел 1 час! Переподключение...")
+        _G.smartFarmActive = false task.wait(1)
+        TeleportService:Teleport(game.PlaceId, Player)
+    end
+end)-- =============================================================================
+-- 🌌 1MORT SPIDER v3.0 // ЧАСТЬ 2.2: БЕЗОСТАНОВОЧНОЕ ТЕЛО ЦИКЛА (~120 СТРОК)
 -- =============================================================================
 
-SmartFarmBtn.MouseButton1Click:Connect(function()
-    _G.smartFarmActive = not _G.smartFarmActive
-    
-    if _G.smartFarmActive then
-        SmartFarmBtn.Text = "Умный Автофарм: АКТИВЕН"
-        SmartFarmBtn.BackgroundColor3 = Color3.fromRGB(0, 150, 100)
-        SmartFarmBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-        _G.logMessage("Запуск робота v3.0 (Цикл сброса 30 сек активен)...")
+local function startFarmingLoop()
+    while _G.smartFarmActive do
+        local char = Player.Character
+        local root = char and char:FindFirstChild("HumanoidRootPart")
+        local hum = char and char:FindFirstChildOfClass("Humanoid")
         
-        task.spawn(function()
-            while _G.smartFarmActive do
-                local char = Player.Character
-                local root = char and char:FindFirstChild("HumanoidRootPart")
-                local hum = char and char:FindFirstChildOfClass("Humanoid")
-                
-                if root and hum and hum.Health > 0 then
-                    local targetPos1 = Vector3.new(6820.5, 20.1, 16.7)
-                    
-                    -- Сбрасываем флаг аварийного рестарта перед началом круга
-                    _G.forceRestartFarm = false
-                    
-                    if _G.justDied then
-                        _G.justDied = false
-                        _G.logMessage("[⚠️ ЗАЩИТА]: Возврат после смерти на Tween 270...")
-                        tweenToPosition(targetPos1)
-                    end
-                    
-                    -- ---------------------------------------------------------
-                    -- ШАГ 1: ТОЧКА 1 (Фарм до 7 предметов)
-                    -- ---------------------------------------------------------
-                    _G.logMessage("[РОБОТ]: Закупка на Точке 1...")
-                    local holdThread1 = task.spawn(function()
-                        while _G.smartFarmActive and _G.checkItemsCount() < 7 and hum.Health > 0 and not _G.forceRestartFarm do
-                            holdEKey() task.wait(0.05)
-                        end
-                    end)
-                    while _G.smartFarmActive and _G.checkItemsCount() < 7 and hum.Health > 0 and not _G.forceRestartFarm do
-                        root.CFrame = CFrame.new(targetPos1) task.wait(0.001)
-                    end
-                    pcall(function() task.cancel(holdThread1) end)
-                    
-                    -- Если сработал 30-секундный таймер простоя или мы выключили бот — уходим на перезапуск
-                    if _G.forceRestartFarm or not _G.smartFarmActive or hum.Health <= 0 then continue end
-                    
-                    -- ---------------------------------------------------------
-                    -- ШАГ 2: ТОЧКА 2 (Сдача, стоим пока не станет строго 3-6 предметов)
-                    -- ---------------------------------------------------------
-                    _G.logMessage("[РОБОТ]: Сдача на Точке 2...")
-                    local p2_1 = CFrame.new(-83.4, 48.5, 417.9)
-                    local p2_2 = CFrame.new(-82.9, 50.1, 431.1)
-                    
-                    local holdThread2 = task.spawn(function()
-                        while _G.smartFarmActive and hum.Health > 0 and not _G.forceRestartFarm do
-                            local count = _G.checkItemsCount()
-                            if count >= 7 or count < 3 then holdEKey() else break end
-                            task.wait(0.05)
-                        end
-                    end)
-                    while _G.smartFarmActive and hum.Health > 0 and not _G.forceRestartFarm do
-                        local items = _G.checkItemsCount()
-                        if items >= 7 or items < 3 then
-                            root.CFrame = p2_1 task.wait(0.001)
-                            root.CFrame = p2_2 task.wait(0.001)
-                        else
-                            break
-                        end
-                    end
-                    pcall(function() task.cancel(holdThread2) end)
-                    
-                    if _G.forceRestartFarm or not _G.smartFarmActive or hum.Health <= 0 then continue end
-                    
-                    -- ---------------------------------------------------------
-                    -- ШАГ 3: ТОЧКА 3 (Очистка остатков до 2 предметов)
-                    -- ---------------------------------------------------------
-                    local itemsNow = _G.checkItemsCount()
-                    if itemsNow >= 3 and itemsNow <= 6 then
-                        _G.logMessage("[РОБОТ]: Зачистка на Точке 3...")
-                        local p3_1 = CFrame.new(6805.9, 17.4, -33.5)
-                        local p3_2 = CFrame.new(6800.1, 17.3, -33.4)
-                        
-                        local holdThread3 = task.spawn(function()
-                            while _G.smartFarmActive and _G.checkItemsCount() > 2 and hum.Health > 0 and not _G.forceRestartFarm do
-                                holdEKey() task.wait(0.05)
-                            end
-                        end)
-                        while _G.smartFarmActive and _G.checkItemsCount() > 2 and hum.Health > 0 and not _G.forceRestartFarm do
-                            root.CFrame = p3_1 task.wait(0.001)
-                            root.CFrame = p3_2 task.wait(0.001)
-                        end
-                        pcall(function() task.cancel(holdThread3) end)
-                    end
-                else
-                    task.wait(1)
-                end
-                task.wait(0.1)
+        if root and hum and hum.Health > 0 then
+            local targetPos1 = Vector3.new(6820.5, 20.1, 16.7)
+            _G.forceRestartFarm = false
+            
+            if _G.justDied then
+                _G.justDied = false
+                tweenToPosition(targetPos1)
             end
-        end)
+            
+            -- ШАГ 1: ТОЧКА 1 (Фарм до 7 предметов)
+            _G.logMessage("[РОБОТ]: Закупка на Точке 1...")
+            local holdThread1 = task.spawn(function()
+                while _G.smartFarmActive and _G.checkItemsCount() < 7 and hum.Health > 0 and not _G.forceRestartFarm do
+                    holdEKey() task.wait(0.05)
+                end
+            end)
+            while _G.smartFarmActive and _G.checkItemsCount() < 7 and hum.Health > 0 and not _G.forceRestartFarm do
+                root.CFrame = CFrame.new(targetPos1) task.wait(0.001)
+            end
+            pcall(function() task.cancel(holdThread1) end)
+            
+            if _G.forceRestartFarm or not _G.smartFarmActive or hum.Health <= 0 then continue end
+            
+            -- ШАГ 2: ТОЧКА 2 (Сдача, стоим пока не станет строго 3-6 предметов)
+            _G.logMessage("[РОБОТ]: Сдача на Точке 2...")
+            local p2_1, p2_2 = CFrame.new(-83.4, 48.5, 417.9), CFrame.new(-82.9, 50.1, 431.1)
+            local holdThread2 = task.spawn(function()
+                while _G.smartFarmActive and hum.Health > 0 and not _G.forceRestartFarm do
+                    local count = _G.checkItemsCount()
+                    if count >= 7 or count < 3 then holdEKey() else break end
+                    task.wait(0.05)
+                end
+            end)
+            while _G.smartFarmActive and hum.Health > 0 and not _G.forceRestartFarm do
+                local items = _G.checkItemsCount()
+                if items >= 7 or items < 3 then root.CFrame = p2_1 task.wait(0.001) root.CFrame = p2_2 task.wait(0.001) else break end
+            end
+            pcall(function() task.cancel(holdThread2) end)
+            
+            if _G.forceRestartFarm or not _G.smartFarmActive or hum.Health <= 0 then continue end
+            
+            -- ШАГ 3: ТОЧКА 3 (Очистка остатков до 2 предметов)
+            if _G.checkItemsCount() >= 3 and _G.checkItemsCount() <= 6 then
+                _G.logMessage("[РОБОТ]: Зачистка на Точке 3...")
+                local p3_1, p3_2 = CFrame.new(6805.9, 17.4, -33.5), CFrame.new(6800.1, 17.3, -33.4)
+                local holdThread3 = task.spawn(function()
+                    while _G.smartFarmActive and _G.checkItemsCount() > 2 and hum.Health > 0 and not _G.forceRestartFarm do
+                        holdEKey() task.wait(0.05)
+                    end
+                end)
+                while _G.smartFarmActive and _G.checkItemsCount() > 2 and hum.Health > 0 and not _G.forceRestartFarm do
+                    root.CFrame = p3_1 task.wait(0.001) root.CFrame = p3_2 task.wait(0.001)
+                end
+                pcall(function() task.cancel(holdThread3) end)
+            end
+        else
+            task.wait(1)
+        end
+        task.wait(0.1)
+    end
+end
+
+-- ПРИНУДИТЕЛЬНЫЙ МГНОВЕННЫЙ ЗАПУСК ФАРМА СРАЗУ ПРИ ЗАГРУЗКЕ КОДА
+_G.smartFarmActive = true
+task.spawn(startFarmingLoop)
+
+_G.SmartFarmBtn.MouseButton1Click:Connect(function()
+    _G.smartFarmActive = not _G.smartFarmActive
+    if _G.smartFarmActive then
+        _G.SmartFarmBtn.Text = "Умный Автофарм: АКТИВЕН"
+        _G.SmartFarmBtn.BackgroundColor3 = Color3.fromRGB(0, 150, 100)
+        task.spawn(startFarmingLoop)
     else
-        SmartFarmBtn.Text = "Умный Автофарм: ВЫКЛ"
-        SmartFarmBtn.BackgroundColor3 = Color3.fromRGB(40, 20, 60)
-        SmartFarmBtn.TextColor3 = Color3.fromRGB(0, 255, 255)
-        _G.logMessage("Умный автофарм остановлен.")
+        _G.SmartFarmBtn.Text = "Умный Автофарм: ВЫКЛ"
+        _G.SmartFarmBtn.BackgroundColor3 = Color3.fromRGB(40, 20, 60)
     end
 end)
+
 -- =============================================================================
--- 🌌 1MORT SPIDER v3.0 // ЧАСТЬ 3: ANTILAG, PATCHED-КНОПКИ И КОНФИГИ (~180 СТРОК)
+-- 🌌 1MORT SPIDER v3.0 // ЧАСТЬ 3: ANTILAG С АВТОСТАРТОМ И ИНТЕРФЕЙС (~180 СТРОК)
 -- =============================================================================
 
 -- КНОПКА: БЫСТРЫЙ РЕСПАВН (ВЫЗЫВАЕТ СМЕРТЬ И ПЕРЕЗАПУСК ЧЕРЕЗ БЕЗДНУ)
@@ -442,24 +397,11 @@ FastRespawnBtn.Parent = _G.FarmPage
 Instance.new("UICorner", FastRespawnBtn).CornerRadius = UDim.new(0, 6)
 
 FastRespawnBtn.MouseButton1Click:Connect(function()
-    local char = Player.Character
-    local root = char and char:FindFirstChild("HumanoidRootPart")
+    local char = Player.Character local root = char and char:FindFirstChild("HumanoidRootPart")
     if not root then return end
-    _G.logMessage("Вызов экстренной смерти...")
     for i = 1, 10 do root.CFrame = CFrame.new(root.Position.X, -1000, root.Position.Z) task.wait(0.001) end
-    local hum = char:FindFirstChildOfClass("Humanoid")
-    if hum then hum.Health = 0 end
+    if char:FindFirstChildOfClass("Humanoid") then char:FindFirstChildOfClass("Humanoid").Health = 0 end
 end)
-
--- СОЗДАНИЕ ПАНЕЛИ АНТИЛАГА (Белая заливка экрана для буста ФПС)
-local AntiLagFrame = Instance.new("Frame")
-AntiLagFrame.Name = "AntiLagScreen"
-AntiLagFrame.Size = UDim2.new(1, 0, 1, 0)
-AntiLagFrame.BackgroundColor3 = Color3.fromRGB(255, 255, 255) 
-AntiLagFrame.BorderSizePixel = 0
-AntiLagFrame.Visible = false
-AntiLagFrame.ZIndex = -1 
-AntiLagFrame.Parent = MainFrame.Parent 
 
 -- ФУНКЦИЯ СОЗДАНИЯ ТУМБЛЕРОВ РАБОЧИХ ВИЗУАЛОВ
 local function createVisualToggle(text, callback)
@@ -515,70 +457,45 @@ createPatchedVisualButton("Player ESP Health")
 createPatchedVisualButton("Chams / Wallhack")
 createPatchedVisualButton("Bullet Tracers")
 
+-- ФЕЙК КНОПКИ ДЛЯ СТРАНИЦЫ BLATANT
+local function createPatchedBlatantButton(text)
+    local FakeBtn = Instance.new("TextButton")
+    FakeBtn.Text = text .. " [❌ PATCHED]"
+    FakeBtn.BackgroundColor3 = Color3.fromRGB(30, 15, 20) FakeBtn.TextColor3 = Color3.fromRGB(150, 50, 50)
+    FakeBtn.Font = Enum.Font.GothamBold FakeBtn.Parent = _G.MainPage
+    Instance.new("UICorner", FakeBtn).CornerRadius = UDim.new(0, 6)
+end
+
+createPatchedBlatantButton("Infinite Fly")
+createPatchedBlatantButton("God Mode")
+createPatchedBlatantButton("Kill Aura")
+
 -- ГОРЯЧАЯ КЛАВИША СКРЫТИЯ МЕНЮ (На кнопку V)
 local HideKey = Enum.KeyCode.V 
-
 UserInputService.InputBegan:Connect(function(input, gameProcessedEvent)
     if gameProcessedEvent then return end
     if input.KeyCode == HideKey then
         local mainFrame = ScreenGui:FindFirstChild("MainFrame")
-        if mainFrame then
-            mainFrame.Visible = not mainFrame.Visible
-            _G.logMessage("[SYSTEM]: Видимость изменена клавишей " .. tostring(HideKey.Name))
-        end
+        if mainFrame then mainFrame.Visible = not mainFrame.Visible end
     end
 end)
 
-local HintLabel = Instance.new("TextLabel")
-HintLabel.Size = UDim2.new(1, -20, 0, 20)
-HintLabel.Position = UDim2.new(0, 10, 1, -25)
-HintLabel.BackgroundTransparency = 1
-HintLabel.Text = "Нажми [ V ] на клавиатуре, чтобы скрыть/открыть меню"
-HintLabel.TextColor3 = Color3.fromRGB(100, 100, 150)
-HintLabel.TextSize = 11
-HintLabel.Font = Enum.Font.GothamItalic
-HintLabel.TextXAlignment = Enum.TextXAlignment.Right
-HintLabel.Parent = MainFrame
-
--- АВТОСОХРАНЕНИЕ Настроек
-local currentConfig = {}
-local function saveSettings()
-    currentConfig.WalkSpeed = _G.speedValue
-    currentConfig.ESP_Boxes = _G.ESP_Boxes
-    currentConfig.ESP_Names = _G.ESP_Names
-    currentConfig.ESP_Health = _G.ESP_Health
-    currentConfig.ESP_Trackers = _G.ESP_Trackers
-
-    local success, jsonString = pcall(function() return HttpService:JSONEncode(currentConfig) end)
-    if success then
-        if writefile then
-            writefile(configFileName, jsonString)
-            _G.logMessage("[CONFIG]: Настройки успешно сохранены.")
-        else
-            _G.SpiderConfig = jsonString
-        end
+-- ⚡ МОДУЛЬ АВТО-ВКЛЮЧЕНИЯ АНТИЛАГА ПРИ СТАРТЕ ЧЕРЕЗ AUTOEXECUTE
+task.spawn(function()
+    task.wait(2) -- Ждем 2 секунды, чтобы сначала запустился автофарм
+    if AntiLagFrame then
+        AntiLagFrame.Visible = true -- Экран сам побелеет для экономии ОЗУ и ФПС
+        _G.logMessage("[⚡ AUTO-ANTILAG]: Энергосберегающий белый экран успешно активирован!")
     end
-end
-
-local SaveConfigBtn = Instance.new("TextButton")
-SaveConfigBtn.Text = "💾 Сохранить Настройки"
-SaveConfigBtn.BackgroundColor3 = Color3.fromRGB(0, 100, 200)
-SaveConfigBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-SaveConfigBtn.Font = Enum.Font.GothamBold
-SaveConfigBtn.Parent = _G.ConfigPage
-Instance.new("UICorner", SaveConfigBtn).CornerRadius = UDim.new(0, 6)
-SaveConfigBtn.MouseButton1Click:Connect(function() saveSettings() end)
-
-_G.logMessage("==============================================")
-_G.logMessage("🌟 ОБНОВЛЕНИЕ 1MORT SPIDER v3.0 СКОМПИЛИРОВАНА УСПЕШНО!")
-_G.logMessage("[STATUS]: Система АФК-Рестарта (30 сек) и AntiLag готовы к работе.")
+end)
 -- =============================================================================
 -- 🌌 1MORT SPIDER v3.0 // ЧАСТЬ 4: СИСТЕМА КОНФИГОВ И ФИНАЛИЗАЦИЯ (~50 СТРОК)
 -- =============================================================================
 
--- АВТОСОХРАНЕНИЕ НАСТРОЕК (Запоминает всё в память Xeno / Studio)
+-- Таблица для текущих сохранений
 local currentConfig = {}
 
+-- АВТОСОХРАНЕНИЕ НАСТРОЕК (Запоминает всё в память Xeno / Studio)
 local function saveSettings()
     currentConfig.WalkSpeed = _G.speedValue
     currentConfig.ESP_Boxes = _G.ESP_Boxes
@@ -592,7 +509,7 @@ local function saveSettings()
             writefile(configFileName, jsonString)
             _G.logMessage("[CONFIG]: Конфиг успешно сохранен на диск компьютера.")
         else
-            -- Если это чистый Roblox Studio, сохраняем локально в сессию
+            -- Если это чистый Roblox Studio, сохраняем локально в сессию _G
             _G.SpiderConfig = jsonString
             _G.logMessage("[CONFIG]: Сохранено в локальную сессию Studio.")
         end
@@ -616,4 +533,4 @@ end)
 
 _G.logMessage("==============================================")
 _G.logMessage("🌟 АБСОЛЮТНО ВСЕ 4 МОДУЛЯ УСПЕШНО СКОМПИЛИРОВАНЫ!")
-_G.logMessage("[STATUS]: Скрипт 1mort spider v3.0 полностью готов к АФК-фарму!")
+_G.logMessage("[STATUS]: Скрипт 1mort spider v3.0 полностью готов к АФК-фарму 24/7!")
